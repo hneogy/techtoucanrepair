@@ -1,580 +1,341 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reserve Raven</title>
-    <!-- FullCalendar CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+    <title>TechToucan Repair - Sophisticated Martian IT Solutions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
     <style>
-        :root {
-            --dark-navy: #001f3f;
-            --deep-blue: #0a2540;
-            --wave-blue: #0077b6;
-            --light-accent: #caf0f8;
-            --text-light: #ffffff;
-            --border-color: #48cae4;
-            --shadow-color: rgba(0, 0, 0, 0.3);
-            --accent-hover: #00b4d8;
-        }
-
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 40px;
-            background-color: var(--dark-navy);
-            color: var(--text-light);
-            line-height: 1.6;
-        }
-
-        h1 {
-            text-align: center;
-            color: var(--light-accent);
-            text-shadow: 2px 2px 4px var(--shadow-color);
-            font-size: 2.5em;
-            margin-bottom: 20px;
-        }
-
-        #info-container {
-            display: flex;
-            justify-content: space-between;
-            max-width: 1100px;
-            margin: 0 auto 40px;
-            gap: 20px;
-        }
-
-        #instructions, #contact-info {
-            flex: 1;
-            background-color: var(--deep-blue);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 8px var(--shadow-color);
-        }
-
-        #instructions h2, #contact-info h2 {
-            color: var(--light-accent);
-            text-align: center;
-            margin-bottom: 15px;
-        }
-
-        #instructions p, #contact-info p {
-            text-align: center;
-            color: var(--light-accent);
-            font-size: 1.1em;
-            margin-bottom: 0;
-        }
-
-        #calendar {
-            max-width: 1100px;
-            margin: 0 auto 40px;
-            background-color: var(--deep-blue);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 4px 8px var(--shadow-color);
-        }
-
-        /* Dark theme overrides for FullCalendar */
-        .fc {
-            --fc-page-bg-color: var(--deep-blue);
-            --fc-neutral-bg-color: rgba(255,255,255,0.05);
-            --fc-neutral-text-color: var(--text-light);
-            --fc-border-color: var(--border-color);
-            --fc-button-text-color: var(--text-light);
-            --fc-button-bg-color: var(--wave-blue);
-            --fc-button-border-color: var(--border-color);
-            --fc-button-hover-bg-color: var(--accent-hover);
-            --fc-button-active-bg-color: #004e73;
-            --fc-event-bg-color: var(--wave-blue);
-            --fc-event-border-color: var(--border-color);
-            --fc-event-text-color: var(--text-light);
-            --fc-today-bg-color: rgba(72, 202, 228, 0.25);
-            --fc-highlight-color: rgba(202, 240, 248, 0.3);
-            --fc-list-event-hover-bg-color: var(--accent-hover);
-        }
-
-        .fc .fc-col-header-cell {
-            background-color: var(--wave-blue);
-            color: var(--text-light);
-            font-weight: bold;
-        }
-
-        .fc .fc-daygrid-day-frame {
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        .fc .fc-daygrid-day-frame:hover {
-            background-color: rgba(202, 240, 248, 0.1);
-        }
-
-        .fc .fc-event {
-            border-radius: 4px;
-            padding: 2px 4px;
-            font-size: 0.85em;
-            transition: transform 0.2s ease;
-        }
-
-        .fc .fc-event:hover {
-            transform: scale(1.05);
-        }
-
-        /* Modal styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.6);
-            animation: fadeIn 0.3s;
-        }
-
-        .modal-content {
-            background-color: var(--deep-blue);
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid var(--border-color);
-            width: 80%;
-            max-width: 500px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px var(--shadow-color);
-        }
-
-        .close {
-            color: var(--light-accent);
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover,
-        .close:focus {
-            color: var(--accent-hover);
-            text-decoration: none;
-        }
-
-        form label {
-            display: block;
-            margin: 10px 0 5px;
-            color: var(--light-accent);
-        }
-
-        form input, form select {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            background-color: var(--dark-navy);
-            color: var(--text-light);
-        }
-
-        .time-group {
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .time-group select {
-            width: 32%;
-        }
-
-        form button {
-            background-color: var(--wave-blue);
-            color: var(--text-light);
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        form button:hover {
-            background-color: var(--accent-hover);
-        }
-
-        /* Upcoming reservations */
-        #upcoming {
-            max-width: 1100px;
-            margin: 0 auto;
-            background-color: var(--deep-blue);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 8px var(--shadow-color);
-        }
-
-        #upcoming h2 {
-            color: var(--light-accent);
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        #reservationList {
-            list-style: none;
+            background: #000000;
+            color: #ffa800;
+            font-family: 'Montserrat', sans-serif;
+            overflow-x: hidden;
+            margin: 0;
             padding: 0;
         }
-
-        #reservationList li {
-            background-color: var(--wave-blue);
-            margin-bottom: 10px;
-            padding: 15px;
-            border-radius: 8px;
-            transition: transform 0.2s ease;
+        .service-card {
+            background: #fead01;
+            border: 1px solid #00b3ff;
+            transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease, height 0.3s ease;
+            cursor: pointer;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.5rem;
+            overflow: hidden;
+            color: #000000;
         }
-
-        #reservationList li:hover {
-            transform: translateY(-2px);
+        .service-card#printer-repair,
+        .service-card#website-development,
+        .service-card#computer-repairs,
+        .service-card#software-support {
+            background: #00b3ff;
         }
-
-        #reservationList li p {
-            margin: 5px 0;
-            text-align: left;
-            color: var(--text-light);
+        .service-card.expanded {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px #ffa800;
+            height: 300px;
+            color: #000000;
         }
-
-        /* Subtle wave background */
-        body::before {
-            content: '';
+        .service-card#printer-repair.expanded,
+        .service-card#website-development.expanded,
+        .service-card#computer-repairs.expanded,
+        .service-card#software-support.expanded {
+            background: #ffa800;
+        }
+        .service-card:hover:not(.expanded) {
+            transform: translateY(-5px);
+            box-shadow: 0 0 15px #00b3ff;
+        }
+        .service-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .expanded-content {
+            display: none;
+            padding: 1.5rem;
+            color: #000000;
+        }
+        .service-card.expanded .service-content {
+            display: none;
+        }
+        .service-card.expanded .expanded-content {
+            display: block;
+        }
+        .toggle-icon::before {
+            content: '+';
+            font-size: 1.5rem;
+            color: #000000;
+        }
+        .service-card.expanded .toggle-icon::before {
+            content: '−';
+        }
+        .mars-btn {
+            background: linear-gradient(45deg, #ffa800, #00b3ff);
+            border: 1px solid #ffa800;
+            color: #fefeff;
+            transition: all 0.3s ease;
+        }
+        .mars-btn:hover {
+            background: linear-gradient(45deg, #00b3ff, #ffa800);
+            box-shadow: 0 0 15px #fed56b;
+        }
+        header, footer {
+            background: #ffa800;
+        }
+        #canvas {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to bottom, var(--deep-blue), var(--dark-navy));
-            opacity: 0.4;
             z-index: -1;
+            opacity: 0.15;
         }
-
-        @keyframes fadeIn {
-            from {opacity: 0;}
-            to {opacity: 1;}
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding-top: 20vh;
+            background-color: #000000;
         }
-
-        /* Responsive design for smaller screens */
-        @media (max-width: 768px) {
-            #info-container {
-                flex-direction: column;
-            }
+        .nav-link {
+            position: relative;
+        }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: -2px;
+            left: 0;
+            background-color: #000000;
+            transition: width 0.3s ease;
+        }
+        .nav-link:hover::after {
+            width: 100%;
+        }
+        .hero-text {
+            color: #89d7ff;
+        }
+        .section-title {
+            color: #89d7ff;
+        }
+        .contact-text {
+            color: #000000;
+        }
+        header a, footer p {
+            color: #000000;
         }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <h1>Reserve Raven</h1>
+    <!-- Background Animation (Martian Particles) -->
+    <canvas id="canvas"></canvas>
 
-    <div id="info-container">
-        <div id="instructions">
-            <h2>Instructions on How to Make a Reservation</h2>
-            <p>Click on a date in the month view to open the booking form. You can adjust the date if needed. Enter your details and select start/end times via dropdowns. Reservations appear on the calendar and in the upcoming list below, updating in real-time. Click a reservation on the calendar to cancel it.</p>
+    <!-- Header -->
+    <header class="fixed w-full py-4 z-50">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <!-- Replace with actual logo file -->
+            <nav>
+                <ul class="flex space-x-6 text-lg">
+                    <li><a href="#home" class="nav-link hover:text-[#000000] transition-colors">Home</a></li>
+                    <li><a href="#services" class="nav-link hover:text-[#000000] transition-colors">Services</a></li>
+                    <li><a href="#about" class="nav-link hover:text-[#000000] transition-colors">About</a></li>
+                    <li><a href="#contact" class="nav-link hover:text-[#000000] transition-colors">Contact</a></li>
+                </ul>
+            </nav>
         </div>
+    </header>
 
-        <div id="contact-info">
-            <h2>Contact Us</h2>
-            <p>To notify about any concern or seek assistance, please contact Honorius Neogy, Owner of TechToucan Repair, the website developer at Email Honorius@neogy.dev or call/text at +1 (907) 602-1040.</p>
+    <!-- Hero Section with Static Background -->
+    <section id="home" class="hero-section">
+        <div class="container mx-auto px-4">
+            <div>
+			<center><img src="TTR.png" alt="Italian Trulli"></center>
+
+                <h2 class="text-5xl font-bold mb-6 animate__animated animate__fadeInDown">If you can't fix it, you don't own it.</h2>
+                <p class="text-xl mb-8 max-w-2xl mx-auto hero-text animate__animated animate__fadeIn animate__delay-1s">TechToucan Repair delivers precision-engineered IT services, inspired by the Martian frontier, for printer repairs, computer fixes, software support, and website development.</p>
+                <a href="#contact" class="mars-btn px-8 py-3 rounded-lg text-lg font-semibold animate__animated animate__pulse animate__infinite">Learn More</a>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <div id="calendar"></div>
-
-    <div id="upcoming">
-        <h2>Upcoming Reservations</h2>
-        <ul id="reservationList"></ul>
-    </div>
-
-    <!-- Booking Modal -->
-    <div id="bookingModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2 id="modalTitle">Book Yacht Reservation</h2>
-            <form id="bookingForm">
-                <label for="reservationDate">Reservation Date:</label>
-                <input type="date" id="reservationDate" name="reservationDate" required>
-
-                <label for="name">Name:</label>
-                <input type="text" id="name" name="name" required>
-
-                <label for="phone">Phone Number:</label>
-                <input type="tel" id="phone" name="phone" required>
-
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-
-                <label>Start Time:</label>
-                <div class="time-group">
-                    <select id="startHour" required>
-                        <option value="">Hour</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8</option>
-                        <option value="9">9</option>
-                        <option value="10">10</option>
-                        <option value="11">11</option>
-                        <option value="12">12</option>
-                    </select>
-                    <select id="startMinute" required>
-                        <option value="">Minute</option>
-                        <script>
-                            for (let i = 0; i < 60; i++) {
-                                const min = i < 10 ? '0' + i : i;
-                                document.write(`<option value="${min}">${min}</option>`);
-                            }
-                        </script>
-                    </select>
-                    <select id="startAmpm" required>
-                        <option value="">AM/PM</option>
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                    </select>
+    <!-- Services Section -->
+    <section id="services" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12 section-title">Services Offered</h2>
+            <div class="flex flex-col space-y-4">
+                <div class="service-card p-6 rounded-lg" id="printer-repair" onclick="toggleServiceDetails(this)">
+                    <div class="service-content">
+                        <h3 class="text-xl font-semibold">Printer Repair</h3>
+                        <span class="toggle-icon"></span>
+                    </div>
+                    <div class="expanded-content">
+                        <h3 class="text-xl font-semibold mb-4">Printer Repair</h3>
+                        <p>Our advanced diagnostics and repair techniques ensure your printers perform flawlessly, even in the toughest conditions. We service all makes and models, addressing issues from paper jams to connectivity problems, with rapid turnaround and long-lasting solutions.</p>
+                    </div>
                 </div>
-
-                <label>End Time:</label>
-                <div class="time-group">
-                    <select id="endHour" required>
-                        <option value="">Hour</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8</option>
-                        <option value="9">9</option>
-                        <option value="10">10</option>
-                        <option value="11">11</option>
-                        <option value="12">12</option>
-                    </select>
-                    <select id="endMinute" required>
-                        <option value="">Minute</option>
-                        <script>
-                            for (let i = 0; i < 60; i++) {
-                                const min = i < 10 ? '0' + i : i;
-                                document.write(`<option value="${min}">${min}</option>`);
-                            }
-                        </script>
-                    </select>
-                    <select id="endAmpm" required>
-                        <option value="">AM/PM</option>
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                    </select>
+                <div class="service-card p-6 rounded-lg" id="computer-repairs" onclick="toggleServiceDetails(this)">
+                    <div class="service-content">
+                        <h3 class="text-xl font-semibold">Computer Repairs</h3>
+                        <span class="toggle-icon"></span>
+                    </div>
+                    <div class="expanded-content">
+                        <h3 class="text-xl font-semibold mb-4">Computer Repairs</h3>
+                        <p>We repair all computer makes and models with cutting-edge technology, ensuring peak performance. From hardware failures to system crashes, our technicians diagnose and resolve issues efficiently, offering upgrades and maintenance to keep your devices running smoothly.</p>
+                    </div>
                 </div>
-
-                <button type="submit">Reserve Now</button>
-            </form>
+                <div class="service-card p-6 rounded-lg" id="software-support" onclick="toggleServiceDetails(this)">
+                    <div class="service-content">
+                        <h3 class="text-xl font-semibold">Software Support</h3>
+                        <span class="toggle-icon"></span>
+                    </div>
+                    <div class="expanded-content">
+                        <h3 class="text-xl font-semibold mb-4">Software Support</h3>
+                        <p>Our expert team resolves software issues with state-of-the-art tools for seamless operation. We handle everything from virus removal and software conflicts to system optimization and updates, ensuring your applications run efficiently and securely.</p>
+                    </div>
+                </div>
+                <div class="service-card p-6 rounded-lg" id="website-development" onclick="toggleServiceDetails(this)">
+                    <div class="service-content">
+                        <h3 class="text-xl font-semibold">Website Development</h3>
+                        <span class="toggle-icon"></span>
+                    </div>
+                    <div class="expanded-content">
+                        <h3 class="text-xl font-semibold mb-4">Website Development</h3>
+                        <p>We craft sleek, responsive websites with a futuristic edge, tailored to your needs. Our development process includes custom design, SEO optimization, and cross-platform compatibility, delivering websites that engage users and drive results.</p>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <!-- About Section -->
+    <section id="about" class="py-16 bg-[#000000]">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-4xl font-bold mb-6">About TechToucan Repair</h2>
+            <div class="max-w-lg mx-auto bg-[#ffa800] p-8 rounded-lg border border-[#00b3ff]">
+                <div class="text-center contact-text">
+                    <p class="text-lg mb-4">Inspired by the precision of Mars exploration, TechToucan Repair delivers sophisticated IT solutions. Our expert team ensures your technology operates flawlessly in any environment.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12 section-title">Contact us</h2>
+            <div class="max-w-lg mx-auto bg-[#89d7ff] p-8 rounded-lg border border-[#00b3ff]">
+                <div class="text-center contact-text">
+                    <p class="text-lg mb-4">Reach out to us for all your IT needs:</p>
+                    <p class="text-xl font-semibold mb-2">Email: <a href="mailto:Ask@TechToucanRepair.com" class="hover:text-[#ffa800] transition-colors">Ask@TechToucanRepair.com</a></p>
+                    <p class="text-xl font-semibold">Phone: <a href="tel:+19076021040" class="hover:text-[#ffa800] transition-colors">+1 (907) 602-1040</a></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-6">
+        <div class="container mx-auto px-4 text-center">
+            <p class="text-[#000000">&copy; 2025 TechToucan Repair. All rights reserved across the solar system.</p>
+        </div>
+    </footer>
+
     <script>
-        // Replace with your own Firebase config
-        const firebaseConfig = {
-		apiKey: "AIzaSyCDLTQNqd8yurjqXv6DmBdIPFCtokrToto",
-		authDomain: "reserveraven-13f34.firebaseapp.com",
-		databaseURL: "https://reserveraven-13f34-default-rtdb.firebaseio.com",
-		projectId: "reserveraven-13f34",
-		storageBucket: "reserveraven-13f34.firebasestorage.app",
-		messagingSenderId: "554985261960",
-		appId: "1:554985261960:web:8e0d31e8b72994456b483d",
-		measurementId: "G-6KB7P4L83S"
-		};
+        // Three.js Background Animation (Martian Particles)
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        const bookingsRef = db.ref('bookings');
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        for (let i = 0; i < 800; i++) {
+            vertices.push(
+                Math.random() * 2000 - 1000,
+                Math.random() * 2000 - 1000,
+                Math.random() * 2000 - 1000
+            );
+        }
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        const material = new THREE.PointsMaterial({ color: 0xffa800, size: 1.2 });
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+        camera.position.z = 500;
 
-        // Modal elements
-        const modal = document.getElementById('bookingModal');
-        const closeBtn = document.getElementsByClassName('close')[0];
-        const bookingForm = document.getElementById('bookingForm');
-        const modalTitle = document.getElementById('modalTitle');
-        const reservationDateInput = document.getElementById('reservationDate');
-        let initialSelectedDate = null;
+        function animate() {
+            requestAnimationFrame(animate);
+            points.rotation.y += 0.001;
+            points.rotation.x += 0.0005;
+            renderer.render(scene, camera);
+        }
+        animate();
 
-        // Close modal
-        closeBtn.onclick = function() {
-            modal.style.display = 'none';
-        };
-
-        window.onclick = function(event) {
-            if (event.target == modal) {
-                modal.style.display = 'none';
-            }
-        };
-
-        // Initialize FullCalendar
-        document.addEventListener('DOMContentLoaded', function() {
-            const calendarEl = document.getElementById('calendar');
-            const calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
-                dateClick: function(info) {
-                    initialSelectedDate = info.date;
-                    const yyyy = initialSelectedDate.getFullYear();
-                    const mm = String(initialSelectedDate.getMonth() + 1).padStart(2, '0');
-                    const dd = String(initialSelectedDate.getDate()).padStart(2, '0');
-                    reservationDateInput.value = `${yyyy}-${mm}-${dd}`;
-                    modalTitle.textContent = `Book Yacht for ${info.dateStr}`;
-                    modal.style.display = 'block';
-                },
-                eventClick: function(info) {
-                    const booking = info.event.extendedProps;
-                    if (confirm(`Cancel reservation by ${booking.name} from ${new Date(booking.start).toLocaleTimeString()} to ${new Date(booking.end).toLocaleTimeString()}?`)) {
-                        bookingsRef.child(info.event.id).remove();
-                    }
-                },
-                eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
-                events: [], // Initial empty
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: ''
-                }
-            });
-            calendar.render();
-
-            // Form submit
-            bookingForm.onsubmit = function(e) {
-                e.preventDefault();
-                const selectedDateStr = reservationDateInput.value;
-                if (!selectedDateStr) {
-                    alert('Please select a reservation date.');
-                    return;
-                }
-                const name = document.getElementById('name').value;
-                const phone = document.getElementById('phone').value;
-                const email = document.getElementById('email').value;
-                const startHour = parseInt(document.getElementById('startHour').value);
-                const startMinute = parseInt(document.getElementById('startMinute').value);
-                const startAmpm = document.getElementById('startAmpm').value;
-                const endHour = parseInt(document.getElementById('endHour').value);
-                const endMinute = parseInt(document.getElementById('endMinute').value);
-                const endAmpm = document.getElementById('endAmpm').value;
-
-                if (isNaN(startHour) || isNaN(startMinute) || !startAmpm || isNaN(endHour) || isNaN(endMinute) || !endAmpm) {
-                    alert('Please select valid start and end times.');
-                    return;
-                }
-
-                const startDate = new Date(selectedDateStr);
-                let startH = startHour;
-                if (startAmpm === 'PM' && startH !== 12) startH += 12;
-                if (startAmpm === 'AM' && startH === 12) startH = 0;
-                startDate.setHours(startH, startMinute, 0);
-
-                const endDate = new Date(selectedDateStr);
-                let endH = endHour;
-                if (endAmpm === 'PM' && endH !== 12) endH += 12;
-                if (endAmpm === 'AM' && endH === 12) endH = 0;
-                endDate.setHours(endH, endMinute, 0);
-
-                if (endDate <= startDate) {
-                    alert('End time must be after start time.');
-                    return;
-                }
-
-                // Check for overlaps
-                const existingEvents = calendar.getEvents();
-                let overlap = false;
-                for (let event of existingEvents) {
-                    if (startDate < event.end && endDate > event.start) {
-                        overlap = true;
-                        break;
-                    }
-                }
-                if (overlap) {
-                    alert('This time slot overlaps with an existing reservation.');
-                    return;
-                }
-
-                const newBooking = {
-                    title: `Reserved by ${name}`,
-                    start: startDate.toISOString(),
-                    end: endDate.toISOString(),
-                    allDay: false,
-                    extendedProps: {
-                        name: name,
-                        phone: phone,
-                        email: email
-                    }
-                };
-
-                bookingsRef.push(newBooking);
-                modal.style.display = 'none';
-                bookingForm.reset();
-            };
-
-            // Real-time listeners for updates
-            bookingsRef.on('child_added', function(snap) {
-                calendar.addEvent({
-                    id: snap.key,
-                    ...snap.val()
-                });
-            });
-
-            bookingsRef.on('child_removed', function(snap) {
-                const event = calendar.getEventById(snap.key);
-                if (event) {
-                    event.remove();
-                }
-            });
-
-            bookingsRef.on('child_changed', function(snap) {
-                const event = calendar.getEventById(snap.key);
-                if (event) {
-                    event.setProp('title', snap.val().title);
-                    event.setStart(snap.val().start);
-                    event.setEnd(snap.val().end);
-                    // Update other props as needed
-                }
-            });
-
-            // For upcoming reservations, use value to fetch all and filter
-            bookingsRef.on('value', function(snap) {
-                const bookings = snap.val();
-                const upcomingList = [];
-
-                if (bookings) {
-                    Object.entries(bookings).forEach(([key, booking]) => {
-                        const start = new Date(booking.start);
-                        if (start > new Date()) {
-                            upcomingList.push({
-                                id: key,
-                                ...booking,
-                                startDate: start
-                            });
-                        }
-                    });
-                }
-
-                const listEl = document.getElementById('reservationList');
-                listEl.innerHTML = '';
-                upcomingList.sort((a, b) => a.startDate - b.startDate);
-                upcomingList.forEach(booking => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `
-                        <p><strong>Date:</strong> ${new Date(booking.start).toLocaleDateString()}</p>
-                        <p><strong>Time:</strong> ${new Date(booking.start).toLocaleTimeString()} - ${new Date(booking.end).toLocaleTimeString()}</p>
-                        <p><strong>Name:</strong> ${booking.extendedProps.name}</p>
-                        <p><strong>Phone:</strong> ${booking.extendedProps.phone}</p>
-                        <p><strong>Email:</strong> ${booking.extendedProps.email}</p>
-                    `;
-                    listEl.appendChild(li);
-                });
-            });
+        // GSAP Animations
+        gsap.from("header", { y: -100, opacity: 0, duration: 1, ease: "power2.out" });
+        gsap.from(".service-card", {
+            y: 50,
+            opacity: 0,
+            duration: 1,
+            stagger: 0.2,
+            scrollTrigger: { trigger: "#services", start: "top 80%" }
         });
+
+        // Toggle Service Details
+        function toggleServiceDetails(card) {
+            const isExpanded = card.classList.contains('expanded');
+            document.querySelectorAll('.service-card').forEach(otherCard => {
+                if (otherCard !== card) {
+                    otherCard.classList.remove('expanded');
+                }
+            });
+            card.classList.toggle('expanded');
+        }
     </script>
-</body>
-</html>
